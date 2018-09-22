@@ -29,7 +29,7 @@ projectDir.eachDir { dir ->
         project.task("build-${dir.name}", type: JavaExec, group: 'acceptance-test') {
             classpath = sourceSets.test.runtimeClasspath
             main = 'Main'
-            args = [dir.name, 'build']
+            args = [dir.name, '-d', 'build']
         }
     }
 }

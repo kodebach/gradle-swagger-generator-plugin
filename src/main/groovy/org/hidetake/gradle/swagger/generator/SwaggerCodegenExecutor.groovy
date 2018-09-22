@@ -16,6 +16,7 @@ class SwaggerCodegenExecutor {
     static final Object lock = new Object()
 
     private static final CLASS_NAME = 'io.swagger.codegen.SwaggerCodegen'
+    private static final CLASS_NAME_V3 = 'io.swagger.codegen.v3.cli.SwaggerCodegen'
 
     private static final CLASS_CACHE = new ConcurrentHashMap<URL[], Class>()
 
@@ -39,22 +40,38 @@ class SwaggerCodegenExecutor {
      * @return Swagger Codegen class
      */
     private static Class findClass(Project project) {
+        def clazz = findClass(project, CLASS_NAME_V3)
+        if (clazz == null) {
+            clazz = findClass(project, CLASS_NAME)
+        }
+        if (clazz == null) {
+            throw new IllegalStateException('''\
+                    Add swagger-codegen-cli to dependencies of the project via one of these ways:
+                      Pre version 3.0.0:
+                        dependencies {
+                          swaggerCodegen 'io.swagger:swagger-codegen-cli:x.x.x'
+                        }
+                      Version 3.0.0+:
+                        dependencies {
+                          swaggerCodegen 'io.swagger.codegen.v3:swagger-codegen-cli:x.x.x'
+                        }'''.stripIndent())
+        }
+        return clazz
+    }
+
+    private static Class findClass(Project project, String className) {
         try {
-            log.debug("Finding class $CLASS_NAME from project class loader: $project.buildscript.classLoader")
-            Class.forName(CLASS_NAME, true, project.buildscript.classLoader)
+            log.debug("Finding class $className from project class loader: $project.buildscript.classLoader")
+            Class.forName(className, true, project.buildscript.classLoader)
         } catch (ClassNotFoundException ignore) {
             def urls = project.configurations.swaggerCodegen.resolve()*.toURI()*.toURL() as URL[]
-            log.debug("Finding class $CLASS_NAME from URLs: $urls")
+            log.debug("Finding class $className from URLs: $urls")
             CLASS_CACHE.computeIfAbsent(urls) {
                 def classLoader = new URLClassLoader(urls)
                 try {
-                    Class.forName(CLASS_NAME, true, classLoader)
-                } catch (ClassNotFoundException e) {
-                    throw new IllegalStateException('''\
-                        Add swagger-codegen-cli to dependencies of the project as follows:
-                          dependencies {
-                            swaggerCodegen 'io.swagger:swagger-codegen-cli:x.x.x'
-                          }'''.stripIndent(), e)
+                    Class.forName(className, true, classLoader)
+                } catch (ClassNotFoundException ignored) {
+                    null
                 }
             }
         }
@@ -89,6 +106,7 @@ class SwaggerCodegenExecutor {
             def originalContextClassLoader = Thread.currentThread().contextClassLoader
             Thread.currentThread().contextClassLoader = swaggerCodegenClass.classLoader
             try {
+                log.debug("Invoke ${swaggerCodegenClass}.main($args)")
                 swaggerCodegenClass.invokeMethod('main', args as String[])
             } finally {
                 Thread.currentThread().contextClassLoader = originalContextClassLoader
